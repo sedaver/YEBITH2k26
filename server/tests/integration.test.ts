@@ -28,7 +28,7 @@ async function agent(email='admin@example.test'){const a=request.agent(app);cons
 function write(method:'post'|'patch'|'delete',url:string,body?:Record<string,unknown>){const req=admin[method](url).set('Origin',origin).set('X-CSRF-Token',csrf);return body===undefined?req:req.send(body);}
 async function house(name='House '+randomUUID()){const r=await write('post','/api/houses',{name,color:'#cc3344',enabled:true,logoUrl:null}).expect(201);HouseSchema.parse(r.body.data);return r.body.data;}
 async function event(name='Event '+randomUUID(),programCategory='Other'){const r=await write('post','/api/events',{name,category:'Dance',programCategory,description:'Annual performance',date:'2026-09-27T12:00:00.000Z',status:'upcoming',imageUrl:null,venue:'Main stage'}).expect(201);EventSchema.parse(r.body.data);return r.body.data;}
-before(async()=>{await pg.exec('CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY)');await pg.exec(await readFile(new URL('../database/001_initial.sql',import.meta.url),'utf8'));await pg.exec(await readFile(new URL('../database/002_provider_access.sql',import.meta.url),'utf8'));await db.query("INSERT INTO festival.events(name,category,event_date,status) VALUES('Legacy Programme','Dance','2026-09-27T08:00:00.000Z','upcoming')");await pg.exec(await readFile(new URL('../database/003_program_categories.sql',import.meta.url),'utf8'));await db.query('INSERT INTO auth.users(id) VALUES($1),($2)',[adminId,editorId]);await db.query("INSERT INTO festival.admin_users(id,email,name,role) VALUES($1,'admin@example.test','Test Admin','admin'),($2,'editor@example.test','Test Editor','editor')",[adminId,editorId]);const result=await agent();admin=result.a;csrf=result.token;assert.equal(result.login.status,200);});
+before(async()=>{await pg.exec('CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY)');await pg.exec(await readFile(new URL('../database/001_initial.sql',import.meta.url),'utf8'));await pg.exec(await readFile(new URL('../database/002_provider_access.sql',import.meta.url),'utf8'));await db.query("INSERT INTO festival.events(name,category,event_date,status) VALUES('Legacy Programme','Dance','2026-09-27T08:00:00.000Z','upcoming')");await pg.exec(await readFile(new URL('../database/003_program_categories.sql',import.meta.url),'utf8'));await pg.exec(await readFile(new URL('../database/004_candidate_results.sql',import.meta.url),'utf8'));await db.query('INSERT INTO auth.users(id) VALUES($1),($2)',[adminId,editorId]);await db.query("INSERT INTO festival.admin_users(id,email,name,role) VALUES($1,'admin@example.test','Test Admin','admin'),($2,'editor@example.test','Test Editor','editor')",[adminId,editorId]);const result=await agent();admin=result.a;csrf=result.token;assert.equal(result.login.status,200);});
 after(async()=>{live.close();await pg.close();});
 
 test('authentication: incorrect login, public visitor, valid session, logout, expiry and role revocation',async()=>{
@@ -79,6 +79,40 @@ test('duplicates, invalid foreign keys, negative points, non-integer position an
  await write('patch','/api/houses/'+h.id,{points:99999}).expect(400);
  const before=(await request(app).get('/api/houses/'+h.id)).body.data.points;assert.equal(before,10);
 });
+test('candidate and team results preserve marks separately from house points across item types',async()=>{
+ const h=await house('Candidate House');
+ for(const category of ['Individual','Off-Stage','Group']){
+  const item=await event('Candidate item '+category,category);
+  const data={eventId:item.id,houseId:h.id,category:'Junior',candidateName:'Anu',score:87.5,position:1,points:5};
+  const first=ResultSchema.parse((await write('post','/api/results',data).expect(201)).body.data);
+  assert.equal(first.candidateName,'Anu');assert.equal(first.score,87.5);assert.equal(first.programCategory,category);
+  const second=ResultSchema.parse((await write('post','/api/results',{...data,candidateName:'Binu',score:0,position:2,points:3}).expect(201)).body.data);
+  assert.equal(second.score,0);
+  await write('post','/api/results',{...data,candidateName:'  ANU  '}).expect(409);
+  await write('patch','/api/results/'+second.id,{candidateName:'anu'}).expect(409);
+  for(const patch of [{score:-1},{score:1000001},{score:1.234},{score:'90'},{candidateName:'a'.repeat(251)}]){
+   await write('patch','/api/results/'+first.id,patch).expect(400);
+  }
+  const found=(await request(app).get('/api/results').query({search:'Anu',eventId:item.id,programCategory:category}).expect(200)).body.data;
+  assert.equal(found.total,1);assert.equal(found.items[0].id,first.id);
+  const rankings=(await request(app).get('/api/scores/program-rankings').query({eventId:item.id}).expect(200)).body.data;
+  assert.equal(rankings[0].entries[0].points,8);
+  const updated=ResultSchema.parse((await write('patch','/api/results/'+first.id,{score:95,candidateName:'Anu Updated'}).expect(200)).body.data);
+  assert.equal(updated.score,95);assert.equal(updated.points,5);
+  const cleared=ResultSchema.parse((await write('patch','/api/results/'+first.id,{score:null}).expect(200)).body.data);
+  assert.equal(cleared.score,null);assert.equal(cleared.candidateName,'Anu Updated');
+  await write('delete','/api/results/'+second.id).expect(200);
+ }
+ assert.equal((await request(app).get('/api/houses/'+h.id)).body.data.points,15);
+ const item=await event('Legacy house-only result');
+ const legacy=ResultSchema.parse((await write('post','/api/results',{eventId:item.id,houseId:h.id,position:1,points:2}).expect(201)).body.data);
+ assert.equal(legacy.candidateName,'');assert.equal(legacy.score,null);
+ // The incremental migration can also be run safely after a manual SQL setup.
+ await pg.exec(await readFile(new URL('../database/004_candidate_results.sql',import.meta.url),'utf8'));
+ const preserved=ResultSchema.parse((await request(app).get('/api/results/'+legacy.id).expect(200)).body.data);
+ assert.equal(preserved.points,2);
+});
+
 test('simultaneous results preserve both scores, ties share rank, disabled houses are excluded',async()=>{
  const h1=await house('Tie Alpha'),h2=await house('Tie Beta'),e1=await event(),e2=await event();
  await Promise.all([write('post','/api/results',{eventId:e1.id,houseId:h1.id,position:1,points:10}).expect(201),write('post','/api/results',{eventId:e2.id,houseId:h1.id,position:1,points:10}).expect(201)]);

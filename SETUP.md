@@ -84,3 +84,21 @@ After configuring the real services, use a staging project to check:
 Automated tests use a real embedded PostgreSQL engine (PGlite), actual HTTP routes, image decoding, transactions, and a separate SSE client. Supabase authentication and object storage are test adapters; those tests do not establish that a real Supabase account or deployment is working. Real service verification remains pending until connection details are supplied.
 
 References: [Supabase database connections](https://supabase.com/docs/guides/database/connecting-to-postgres), [Supabase Auth](https://supabase.com/docs/guides/auth), [storage access controls](https://supabase.com/docs/guides/storage/security/access-control).
+# Candidate and item results upgrade
+
+For an existing Supabase installation that already has program categories, run
+`server/database/004_candidate_results.sql` in the Supabase SQL Editor before
+deploying this version. The incremental migration preserves all existing results
+and house points and is safe to rerun. Do not paste npm commands into the SQL Editor.
+
+In **Admin → Events**, create each competition item and choose Individual, Group,
+Off-Stage, or Other as its program category. In **Results → Add result**, select
+the item type and item, enter the candidate name (or team name for a group),
+division, house, position, optional marks scored, and house points awarded.
+Use one record per team for group items. Multiple candidates from one house can
+have results in the same item and division. Names distinguish those entries;
+include a candidate number in the name if two candidates have identical names.
+
+Marks are displayed with the candidate's result. Only **house points awarded**
+contribute to the house standings. Existing house-only results remain editable;
+edit those records to add candidate details instead of entering the same award twice.

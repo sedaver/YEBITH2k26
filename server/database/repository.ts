@@ -7,7 +7,7 @@ export type Entity='houses'|'events'|'results'|'gallery';
 const projections:Record<Entity,string>={
  houses:`x.id,x.name,x.color,x.logo_url AS "logoUrl",x.is_active AS enabled,x.points,x.updated_at AS "updatedAt",CASE WHEN x.is_active THEN (SELECT count(*)::int+1 FROM festival.house_scores s WHERE s.is_active AND s.points>x.points) ELSE NULL END AS rank`,
  events:`x.id,x.name,x.category,pc.name AS "programCategory",x.description,x.event_date AS date,x.status,x.image_url AS "imageUrl",x.venue,x.updated_at AS "updatedAt",(SELECT count(*)::int FROM festival.results r WHERE r.event_id=x.id) AS "resultCount"`,
- results:`x.id,x.event_id AS "eventId",e.name AS "eventName",x.category,pc.name AS "programCategory",x.house_id AS "houseId",x.position,x.points::float8 AS points,x.result_date AS date,x.updated_at AS "updatedAt"`,
+ results:`x.id,x.event_id AS "eventId",e.name AS "eventName",x.category,pc.name AS "programCategory",x.house_id AS "houseId",x.candidate_name AS "candidateName",x.score::float8 AS score,x.position,x.points::float8 AS points,x.result_date AS date,x.updated_at AS "updatedAt"`,
  gallery:`x.id,x.image_url AS url,x.image_url AS "imageUrl",x.thumbnail_url AS "thumbnailUrl",x.caption,x.category,x.event_id AS "eventId",coalesce(e.name,'') AS "eventName",x.uploaded_at AS "createdAt",x.uploaded_at AS "uploadedAt",x.updated_at AS "updatedAt",x.width,x.height`
 };
 const from:Record<Entity,string>={
@@ -84,7 +84,7 @@ export class Repository {
  async list(kind:Exclude<Entity,'houses'>,q:ListQuery){
   const values:any[]=[];const filters:string[]=[];const add=(sql:string,value:any)=>{values.push(value);filters.push(sql.replace('?',`$${values.length}`));};
   const dateCol=kind==='events'?'x.event_date':kind==='results'?'x.result_date':'x.uploaded_at';
-  if(q.search){const pattern='%'+q.search.replace(/[\\%_]/g,'\\$&')+'%';add((kind==='events'?'x.name':kind==='results'?"(e.name || ' ' || x.category || ' ' || (SELECT name FROM festival.houses WHERE id=x.house_id))":"(x.caption || ' ' || coalesce(e.name,''))")+' ILIKE ?',pattern);}
+  if(q.search){const pattern='%'+q.search.replace(/[\\%_]/g,'\\$&')+'%';add((kind==='events'?'x.name':kind==='results'?"(e.name || ' ' || x.category || ' ' || x.candidate_name || ' ' || (SELECT name FROM festival.houses WHERE id=x.house_id))":"(x.caption || ' ' || coalesce(e.name,''))")+' ILIKE ?',pattern);}
   if(q.category)add('x.category=?',q.category);
   if(q.programCategory&&kind!=='gallery')add('pc.name=?',(await this.categoryId(this.db,q.programCategory)).name);
   if(q.status&&kind==='events')add('x.status=?',q.status);
@@ -112,7 +112,7 @@ export class Repository {
    if(events.rows[0].status==='cancelled'||!houses.rows[0].is_active)throw new ApiError(400,'VALIDATION_ERROR','Results require an active house and an event that is not cancelled.');
    if(!id){data.category??=events.rows[0].category;data.date??=new Date().toISOString();}
   }
-  const columns:Record<Entity,Record<string,string>>={houses:{name:'name',color:'color',logoUrl:'logo_url',enabled:'is_active'},events:{name:'name',category:'category',programCategoryId:'program_category_id',description:'description',date:'event_date',status:'status',imageUrl:'image_url',venue:'venue'},results:{eventId:'event_id',houseId:'house_id',category:'category',position:'position',points:'points',date:'result_date'},gallery:{caption:'caption',category:'category',eventId:'event_id'}};
+  const columns:Record<Entity,Record<string,string>>={houses:{name:'name',color:'color',logoUrl:'logo_url',enabled:'is_active'},events:{name:'name',category:'category',programCategoryId:'program_category_id',description:'description',date:'event_date',status:'status',imageUrl:'image_url',venue:'venue'},results:{eventId:'event_id',houseId:'house_id',candidateName:'candidate_name',score:'score',category:'category',position:'position',points:'points',date:'result_date'},gallery:{caption:'caption',category:'category',eventId:'event_id'}};
   const keys=Object.keys(data).filter(k=>columns[kind][k]);if(!keys.length)throw new ApiError(400,'VALIDATION_ERROR','Provide at least one field to update.');
   const values=keys.map(k=>data[k]);const cols=keys.map(k=>columns[kind][k]);
   const saved=await db.query<{id:string}>(id?`UPDATE festival.${kind} SET ${cols.map((c,i)=>`${c}=$${i+1}`).join(',')} WHERE id=$${values.length+1} RETURNING id`:`INSERT INTO festival.${kind}(${cols.join(',')}) VALUES(${values.map((_,i)=>`$${i+1}`).join(',')}) RETURNING id`,id?[...values,id]:values);
