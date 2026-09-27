@@ -26,3 +26,16 @@
 @media(max-width:900px){.program-ranking-grid{grid-template-columns:1fr}.category-standings .ranking-list{grid-template-columns:1fr}}
 @media(max-width:520px){.program-ranking,.category-standings{padding:19px}.program-ranking-head{flex-direction:column;gap:10px}.ranking-list li{grid-template-columns:45px minmax(0,1fr) auto;gap:8px}.ranking-house strong{font-size:13px}.ranking-points{font-size:14px}.card-result-status{right:10px;bottom:10px}}
 @media(max-width:760px){.results-table td[data-label=Program]{border-bottom:1px solid var(--border);padding-bottom:13px;margin-bottom:5px}}
+.little-kites-signoff{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:18px 6%;background:#f8f8f6;color:#51594f;border-top:1px solid #e1e4dc}
+.little-kites-signoff span{font-size:11px;font-weight:700;letter-spacing:2px}
+.little-kites-signoff img{display:block;width:130px;height:auto;max-height:102px;object-fit:contain}
+@media(max-width:760px){.little-kites-signoff{padding:18px 6%}.little-kites-signoff span{max-width:160px;line-height:1.5}.little-kites-signoff img{width:100px}}
+.hero-presenter{display:flex;align-items:center;gap:16px;width:max-content;max-width:100%;margin-bottom:25px}
+.hero-presenter-copy{color:#fff;font-size:17px;font-weight:800;letter-spacing:1.8px;line-height:1.35;text-shadow:0 2px 8px #071112b3}
+.hero-presenter-logo{display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.hero-presenter-logo img{display:block;width:100px;height:auto;filter:invert(1) hue-rotate(180deg)}
+@media(max-width:760px){.hero-presenter{gap:11px;margin-bottom:22px}.hero-presenter-copy{font-size:14px;letter-spacing:1.2px}.hero-presenter-logo img{width:76px}}
+.result-filters>.field{max-width:300px}
+.result-filters>.text-reset{margin-left:auto}
+.footer-instagram{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.footer-instagram:hover{color:#fff}
