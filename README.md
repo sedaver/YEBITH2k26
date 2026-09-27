@@ -1,6 +1,6 @@
 # YEBETH2k26 · GHS BEENCHI
 
-The existing festival frontend is connected to a TypeScript/Express backend, PostgreSQL, Supabase Auth and Supabase Storage. The public design is preserved.
+The existing festival frontend is connected to a TypeScript/Express backend, PostgreSQL, Supabase Auth and Supabase Storage. Programmes support database-backed Individual, Group, Off-Stage and Other categories, derived programme rankings, category standings and overall standings. The public design is preserved.
 
 ## Activation status
 

@@ -46,8 +46,11 @@ export function createApp(deps:{db:DB;config:Config;auth:AuthProvider;store:Obje
   const id=await auth.changePassword(token,password);if(!id)throw new ApiError(401,'INVALID_RESET','The reset link has expired. Request another link.');await db.query('DELETE FROM festival.sessions WHERE user_id=$1',[id]);await sec.logout(req,res);ok(res,null);
  });
  api.get('/live',(req,res)=>live.connect(req,res));
+ api.get('/program-categories',async(_req,res)=>ok(res,await repo.categories()));
  api.get('/leaderboard',async(_req,res)=>ok(res,await repo.leaderboard()));
  api.get('/scores/breakdown',async(_req,res)=>ok(res,await repo.breakdown()));
+ api.get('/scores/category-standings',async(req,res)=>{const q=queryInput.pick({programCategory:true}).parse(req.query);ok(res,await repo.categoryStandings(q.programCategory));});
+ api.get('/scores/program-rankings',async(req,res)=>{const q=queryInput.pick({programCategory:true,eventId:true}).parse(req.query);ok(res,await repo.programRankings(q));});
  api.get('/settings',async(_req,res)=>ok(res,await repo.settings()));
  api.patch('/settings',sec.requireAdmin,sec.adminOnly,async(req,res)=>ok(res,await repo.saveSettings(settingsInput.parse(req.body),req.admin!.id)));
  api.get('/admin/stats',sec.requireAdmin,async(_req,res)=>{res.set('Cache-Control','no-store');ok(res,await repo.stats());});

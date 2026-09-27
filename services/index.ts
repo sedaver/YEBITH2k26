@@ -1,5 +1,5 @@
 import {z} from 'zod';import {request,mutate,clearSession,ensureCsrf,urlFor,ApiError} from './client';import {isConnected} from './config';
-import {HouseSchema,EventSchema,ResultSchema,GallerySchema,BreakdownSchema,StatsSchema,SettingsSchema,SessionSchema,pageSchema,type Query} from './models';
+import {HouseSchema,ProgramCategorySchema,EventSchema,ResultSchema,GallerySchema,BreakdownSchema,RankingEntrySchema,ProgramRankingSchema,StatsSchema,SettingsSchema,SessionSchema,pageSchema,type Query} from './models';
 const crud=<S extends z.ZodTypeAny>(path:string,schema:S)=>({
  list:async(query:Query={},signal?:AbortSignal)=>pageSchema(schema).parse(await request(path,{signal},query)),
  create:async(data:unknown)=>schema.parse(await mutate(path,'POST',data)),
@@ -7,6 +7,7 @@ const crud=<S extends z.ZodTypeAny>(path:string,schema:S)=>({
  remove:async(id:string)=>mutate<void>(path+'/'+encodeURIComponent(id),'DELETE'),
 });
 export const houseService={...crud('/houses',HouseSchema),all:async(signal?:AbortSignal)=>z.array(HouseSchema).parse(await request('/houses',{signal}))};
+export const programCategoryService={all:async(signal?:AbortSignal)=>z.array(ProgramCategorySchema).parse(await request('/program-categories',{signal}))};
 export const eventService=crud('/events',EventSchema);
 export const resultService=crud('/results',ResultSchema);
 export const galleryService={...crud('/gallery',GallerySchema),upload:async(file:File,metadata:{caption:string;category:string;eventId:string|null},onProgress:(value:number)=>void,signal?:AbortSignal)=>{
@@ -22,7 +23,11 @@ export const galleryService={...crud('/gallery',GallerySchema),upload:async(file
  const body=new FormData();body.append('image',file);body.append('metadata',JSON.stringify(metadata));xhr.send(body);
  });
 }};
-export const scoreService={breakdown:async(signal?:AbortSignal)=>z.array(BreakdownSchema).parse(await request('/scores/breakdown',{signal}))};
+export const scoreService={
+ breakdown:async(signal?:AbortSignal)=>z.array(BreakdownSchema).parse(await request('/scores/breakdown',{signal})),
+ categoryStandings:async(programCategory?:string,signal?:AbortSignal)=>z.array(RankingEntrySchema).parse(await request('/scores/category-standings',{signal},{programCategory})),
+ programRankings:async(query:Query={},signal?:AbortSignal)=>z.array(ProgramRankingSchema).parse(await request('/scores/program-rankings',{signal},query))
+};
 export const authService={
  session:async()=>SessionSchema.parse(await request('/auth/session')),
  login:async(email:string,password:string)=>{await ensureCsrf();return SessionSchema.parse(await mutate('/auth/login','POST',{email,password}));},

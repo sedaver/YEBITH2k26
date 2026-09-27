@@ -22,6 +22,7 @@ All endpoints are under `/api`. Success: `{success:true,data:...}`. Error: `{suc
 | GET | /houses | All houses with database totals/ranks; optional active=true |
 | GET | /houses/:id | One house |
 | POST, PATCH, DELETE | /houses, /houses/:id | Admin only; dependent results prevent deletion |
+| GET | /program-categories | Active programme categories in display order |
 | GET | /events, /events/:id | Paginated programme / individual event |
 | POST, PATCH, DELETE | /events, /events/:id | Admin/editor |
 | GET | /results, /results/:id | Paginated results / individual result |
@@ -31,6 +32,8 @@ All endpoints are under `/api`. Success: `{success:true,data:...}`. Error: `{suc
 | PATCH, DELETE | /gallery/:id | Admin/editor; metadata change or image deletion |
 | GET | /leaderboard | Active houses, totals and official ranks |
 | GET | /scores/breakdown | House/category score aggregates |
+| GET | /scores/program-rankings | Rankings derived per programme; filters: programCategory, eventId |
+| GET | /scores/category-standings | House totals for one programCategory, or overall totals |
 | GET | /admin/stats | Admin/editor statistics, leaders, five recent results/images |
 | GET, PATCH | /settings | Public read, admin-only write |
 | GET | /live | Public SSE invalidations; never sends admin data |
@@ -41,11 +44,11 @@ Writes require a valid Origin and X-CSRF-Token even during login. The current fr
 
 Frontend fields remain camelCase, while relational columns use snake_case in the private `festival` schema.
 
-House input: name, six-digit hex color, nullable HTTPS logoUrl, enabled. House totals cannot be submitted. Events: name, art category, ISO date, description, status (upcoming/live/completed/cancelled), optional HTTPS imageUrl and venue. Results: eventId, houseId, positive integer position, finite nonnegative points (two decimal places, up to 1,000,000), optional competition category and ISO date. Missing category uses the event's category; missing result date uses server time.
+House input: name, six-digit hex color, nullable HTTPS logoUrl, enabled. House totals cannot be submitted. Events: name, art category, programCategory, ISO date, description, status (upcoming/live/completed/cancelled), optional HTTPS imageUrl and venue. Programme categories are normalized in `festival.program_categories`; the initial values are Individual, Group, Off-Stage and Other. Results: eventId, houseId, positive integer position, finite nonnegative points (two decimal places, up to 1,000,000), optional competition division and ISO date. Missing result division uses the event's art category; missing result date uses server time.
 
 Results are unique per event, house and competition category. The model supports one scored entry per house/category in an event; tied houses may share a position. Repeated entries require distinct competition categories or a future participant dimension. Invalid event/house references, disabled houses and cancelled events reject new/edited results. All constraints are rechecked by PostgreSQL.
 
-Official totals are SUM(points) from results whose event is not cancelled. Cancelling an event temporarily excludes its scores; restoring it includes them again. Disabled houses retain their history and total but leave the public ranking. Competition ranks share numbers for ties (1,1,3); tied display order is deterministic by name then id. Scores are never stored as a separately mutable total.
+Official totals are SUM(points) from results whose event is not cancelled. Programme rankings group that same data by event and house; category standings group it by programme category and house; overall standings group it by house. Cancelling an event temporarily excludes its scores everywhere, while restoring it includes them again. Disabled houses retain their history and total but leave public rankings. Ranks share numbers for ties (1,1,3); tied display order is deterministic by name then id. Scores and ranks are never stored as separately mutable totals.
 
 Deleting an event cascades its results and clears its association from gallery metadata; images remain. Deleting a house with results is rejected. Transactions keep score-visible writes, revision changes and audit entries atomic.
 
@@ -53,7 +56,7 @@ Deleting an event cascades its results and clears its association from gallery m
 
 Page shape: `{items,nextCursor,total}`. A cursor is a validated opaque-to-the-UI offset string, not a snapshot token; concurrent inserts can shift page boundaries. Sorting always has an id tie-breaker. Default page size 20, maximum 200. Page and cursor both work.
 
-Common filters: search, category, date, dateFrom, dateTo, sort. Events add status; results add eventId and houseId; gallery adds eventId. Date-only filters use Asia/Kolkata. Supported sorts: name, date, -date, position, -points, createdAt, -createdAt as applicable. Search terms and every value are parameterized; identifiers and sort columns come only from server allowlists. Counts and page rows share one database statement.
+Common filters: search, category, programCategory, date, dateFrom, dateTo, sort. Events add status; results add eventId and houseId; gallery adds eventId. Date-only filters use Asia/Kolkata. Supported sorts: name, date, -date, position, -points, createdAt, -createdAt as applicable. Search terms and every value are parameterized; identifiers and sort columns come only from server allowlists. Counts and page rows share one database statement.
 
 The existing event selection controls request up to 200 events. For larger festivals, add a searchable event picker rather than loading the full programme into every form.
 

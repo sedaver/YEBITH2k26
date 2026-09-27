@@ -25,6 +25,8 @@ npm run storage:provision
 
 Migrations are transactional, tracked, and protected by an advisory lock. They create an isolated `festival` schema with private tables, indexes, constraints, score views, audit records, and change revisions. Keep this schema out of Supabase's exposed Data API schemas. Browser roles receive no access. Run migrations using the project database owner. The storage command creates the public gallery bucket; anonymous clients can read published photos but receive no upload/delete policy.
 
+Migration `003_program_categories.sql` adds the programme category table and assigns every existing programme to `Other` without changing houses, results, scores, users, gallery items, or audit records. Run `npm run db:migrate` again after pulling this upgrade. Administrators can then recategorize existing programmes from the Events workspace.
+
 For a dedicated runtime database role, have your database administrator grant access only to the `festival` schema, its sequences and tables, and create the corresponding RLS policies for that role. Do not reuse that role's connection for migrations. The default Supabase owner connection works for initial setup but has broader database privileges.
 
 ## 3. Create the first administrator
@@ -50,7 +52,7 @@ npm run dev
 
 The website runs at `http://127.0.0.1:5173` and the API at port 3001. Vite forwards `/api` to the backend. Close any older frontend process using port 5173 first. Use `npm run dev:frontend` and `npm run dev:api` for separate terminals.
 
-Open `/admin/login`, sign in, create houses, create events, and publish results. A new database contains the school/festival settings only; no fake houses, scores, events or photos are inserted. Development fixtures are optional through `npm run seed`, which requires `ALLOW_DEVELOPMENT_SEED=yes`, a non-production environment, and an empty database.
+Open `/admin/login`, sign in, create houses, create programmes with Individual, Group, Off-Stage or Other categories, and publish results. Programme rankings, category standings and overall standings are all calculated from those result records. A new database contains the school/festival settings only; no fake houses, scores, events or photos are inserted. Development fixtures are optional through `npm run seed`, which requires `ALLOW_DEVELOPMENT_SEED=yes`, a non-production environment, and an empty database.
 
 ## 5. Deploy the complete application
 
