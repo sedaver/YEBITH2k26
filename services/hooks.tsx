@@ -3,11 +3,11 @@ const cache=new Map<string,{data:unknown,time:number}>();export function invalid
 export function useResource<T>(key:string,loader:(signal:AbortSignal)=>Promise<T>){
  const [data,setData]=useState<T|undefined>();const [loading,setLoading]=useState(isConnected());const [error,setError]=useState(false);const [updatedAt,setUpdatedAt]=useState<Date>();const [refreshing,setRefreshing]=useState(false);const [revision,setRevision]=useState(0);const loadRef=useRef(loader);loadRef.current=loader;
  const refresh=useCallback(()=>{cache.delete(key);setRevision(v=>v+1)},[key]);
- useEffect(()=>{let active=true;let busy=false;let timer:ReturnType<typeof setTimeout>;const controller=new AbortController();const cached=cache.get(key);setData(cached?.data as T|undefined);setError(false);
+ useEffect(()=>{let active=true;let busy=false;let pending=false;let timer:ReturnType<typeof setTimeout>;const controller=new AbortController();const cached=cache.get(key);setData(cached?.data as T|undefined);setError(false);
  if(!isConnected()){setLoading(false);return;}
- async function run(){if(busy||!active)return;busy=true;setRefreshing(true);if(!cache.has(key))setLoading(true);
+ async function run(){if(!active)return;if(busy){pending=true;return;}busy=true;setRefreshing(true);if(!cache.has(key))setLoading(true);
  try{const next=await loadRef.current(controller.signal);if(active){cache.set(key,{data:next,time:Date.now()});if(cache.size>60)cache.delete(cache.keys().next().value!);setData(next);setUpdatedAt(new Date());setError(false);}}
- catch{if(active)setError(true);}finally{busy=false;if(active){setLoading(false);setRefreshing(false);}}
+ catch{if(active)setError(true);}finally{busy=false;if(active){setLoading(false);setRefreshing(false);if(pending){pending=false;void run();}}}
  }
  if(cached&&Date.now()-cached.time<10000){setLoading(false);setUpdatedAt(new Date(cached.time));}else void run();
  function schedule(){timer=setTimeout(async()=>{if(document.visibilityState==='visible')await run();schedule();},backendConfig.pollIntervalMs)}schedule();

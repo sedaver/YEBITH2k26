@@ -1,0 +1,14 @@
+import {readConfig} from './config';
+import {database} from './database/db';
+import {authProvider} from './auth/provider';
+import {objectStore} from './storage/images';
+import {createApp} from './app';
+const config=readConfig();const db=database(config.DATABASE_URL,config.DATABASE_CA);
+await db.query('SELECT value FROM festival.revision WHERE id=1');
+const {app,live,images}=createApp({db,config,auth:authProvider(config),store:objectStore(config)});
+const server=app.listen(config.PORT,'0.0.0.0',()=>console.log(`Festival API listening on port ${config.PORT}`));
+server.requestTimeout=60000;server.headersTimeout=15000;live.start();
+let maintenanceBusy=false;
+const maintenance=setInterval(async()=>{if(maintenanceBusy)return;maintenanceBusy=true;try{await images.cleanup();await db.query('DELETE FROM festival.sessions WHERE expires_at<=now()');await db.query('DELETE FROM festival.rate_limits WHERE expires_at<=now()');}catch{console.error('Scheduled maintenance failed; will retry.');}finally{maintenanceBusy=false;}},60000);
+let stopping=false;const stop=()=>{if(stopping)return;stopping=true;clearInterval(maintenance);live.close();server.close(()=>{void db.close().then(()=>process.exit(0));});setTimeout(()=>process.exit(1),15000).unref();};
+process.on('SIGTERM',stop);process.on('SIGINT',stop);

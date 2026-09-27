@@ -1,0 +1,14 @@
+import {z} from 'zod';
+export const uuid=z.string().uuid();
+const name=z.string().trim().min(1).max(150);
+const url=z.string().url().max(2048).refine(s=>s.startsWith('https://'),'Use HTTPS for image URLs').nullable();
+const date=z.string().datetime({offset:true});
+export const artCategories=['Dance','Music','Drama','Painting','Drawing','Photography','Literary','Instrumental Music','Recitation','Quiz','Ceremony','Other'] as const;
+export const houseInput=z.object({name:name.max(100),color:z.string().regex(/^#[0-9a-f]{6}$/i),logoUrl:url.default(null),enabled:z.boolean().default(true)}).strict();
+export const eventInput=z.object({name,category:z.enum(artCategories),description:z.string().trim().max(2000).default(''),date,status:z.enum(['upcoming','live','completed','cancelled']),imageUrl:url.default(null),venue:z.string().trim().max(250).default('')}).strict();
+export const resultInput=z.object({eventId:uuid,houseId:uuid,category:z.string().trim().min(1).max(100).optional(),position:z.number().int().min(1).max(10000),points:z.number().finite().min(0).max(1000000).multipleOf(0.01),date:date.optional()}).strict();
+export const galleryInput=z.object({caption:z.string().trim().max(250).default(''),category:z.enum(artCategories),eventId:uuid.nullable().default(null)}).strict();
+const day=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(s=>!Number.isNaN(Date.parse(s))&&new Date(s).toISOString().slice(0,10)===s,'Invalid date');
+export const settingsInput=z.object({schoolName:name,festivalName:name.max(100),description:z.string().trim().min(1).max(1000),startDate:day.nullable().default(null),endDate:day.nullable().default(null)}).strict().refine(v=>!v.startDate||!v.endDate||v.endDate>=v.startDate,'End date must be after start date');
+export const queryInput=z.object({limit:z.coerce.number().int().min(1).max(200).default(20),page:z.coerce.number().int().min(1).max(50000).default(1),cursor:z.string().regex(/^\d{1,7}$/).optional(),search:z.string().trim().max(150).optional(),category:z.string().max(100).optional(),status:z.enum(['upcoming','live','completed','cancelled']).optional(),date:day.optional(),dateFrom:day.optional(),dateTo:day.optional(),eventId:uuid.optional(),houseId:uuid.optional(),active:z.enum(['true','false']).optional(),sort:z.enum(['name','date','-date','position','-points','createdAt','-createdAt']).default('-date')}).strict();
+export type ListQuery=z.infer<typeof queryInput>;

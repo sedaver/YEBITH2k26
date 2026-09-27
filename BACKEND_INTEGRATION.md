@@ -1,97 +1,87 @@
-# Backend integration contract
+# Backend/API contract
 
-This is a frontend-only delivery. No backend infrastructure, authentication system, storage, scoring rules or sample records have been added.
+The TypeScript API matches the existing forms and data schemas. Setup and pending real-provider requirements are in [SETUP.md](./SETUP.md).
 
-## Configure
-Edit `services/config.ts`:
-- `apiBaseUrl`: HTTPS API base such as `https://api.example.org/v1`. Empty means disconnected preview mode.
-- `realtimeUrl`: optional full HTTPS Server-Sent Events URL.
-- `pollIntervalMs`: 15000 by default. All active resources refresh while the page is visible and immediately after reconnecting or a successful mutation.
-- `requestTimeoutMs`: 15000.
+## Responses and connections
 
-These settings are public. Never include tokens, service-role keys or secrets. All requests use `credentials: 'include'`. Adapt only the service layer if you prefer another backend provider or SDK.
+All endpoints are under `/api`. Success: `{success:true,data:...}`. Error: `{success:false,error:{code,message}}`. The frontend service adapter unwraps success data and displays safe validation messages. No internal stack trace is returned.
 
-## Authentication
-| Method | Path | Response |
+`VITE_API_BASE_URL` defaults to `/api`; `VITE_REALTIME_URL` defaults to `/api/live`. These are public addresses only. Server secrets never enter frontend code.
+
+## Endpoints
+
+| Methods | Path | Access / response |
 |---|---|---|
-| GET | /auth/csrf | { csrfToken: string } |
-| POST | /auth/login | { user: AdminUser } |
-| GET | /auth/session | { user: AdminUser \| null } |
-| POST | /auth/logout | 204 |
+| GET | /health | Database readiness |
+| GET | /auth/csrf | CSRF token, signed against HttpOnly cookie |
+| POST | /auth/login | Email/password; returns authorized profile |
+| GET | /auth/session | Profile or null |
+| POST | /auth/logout | Revoke server session and clear cookies |
+| POST | /auth/reset-password | Send recovery email through Supabase |
+| POST | /auth/change-password | Recovery token/new password; revoke sessions |
+| GET | /houses | All houses with database totals/ranks; optional active=true |
+| GET | /houses/:id | One house |
+| POST, PATCH, DELETE | /houses, /houses/:id | Admin only; dependent results prevent deletion |
+| GET | /events, /events/:id | Paginated programme / individual event |
+| POST, PATCH, DELETE | /events, /events/:id | Admin/editor |
+| GET | /results, /results/:id | Paginated results / individual result |
+| POST, PATCH, DELETE | /results, /results/:id | Admin/editor |
+| GET | /gallery, /gallery/:id | Paginated images / individual image |
+| POST | /gallery | Admin/editor; multipart image plus JSON metadata |
+| PATCH, DELETE | /gallery/:id | Admin/editor; metadata change or image deletion |
+| GET | /leaderboard | Active houses, totals and official ranks |
+| GET | /scores/breakdown | House/category score aggregates |
+| GET | /admin/stats | Admin/editor statistics, leaders, five recent results/images |
+| GET, PATCH | /settings | Public read, admin-only write |
+| GET | /live | Public SSE invalidations; never sends admin data |
 
-Login JSON: `{ email, password }`. AdminUser: `{ id: string, name: string, email: string, role: 'admin' }`.
-The backend sets and invalidates secure HttpOnly session cookies. Mutations, including login/logout, send `X-CSRF-Token` obtained from /auth/csrf. Do not rotate the CSRF token during the session without updating the frontend adapter to refresh it. No credentials are persisted in browser storage.
+Writes require a valid Origin and X-CSRF-Token even during login. The current frontend's public navigation never links to administration. UI hiding is not the authorization boundary: every write endpoint independently validates the session and role.
 
-Enforce authentication and administrator permissions on every protected endpoint, independently of frontend route guards. Public GET routes may return published data only. Return 401 for expired/invalid sessions, 403 for denied permissions and 409 for conflicts. Do not return internal stack traces.
+## Data and validation
 
-Use a same-site backend where possible. If cross-origin credentials are necessary, configure CORS for the exact frontend origin, credential support, allowed methods and X-CSRF-Token/Content-Type headers. Configure cookie policies for your deployment.
+Frontend fields remain camelCase, while relational columns use snake_case in the private `festival` schema.
 
-## Public reads and administration
-| Method | Path | Shape / behaviour |
-|---|---|---|
-| GET | /houses | House[]; include enabled state; public may omit private records |
-| PATCH | /houses/:id | accepts name, color, logoUrl, enabled; returns House |
-| GET | /events | Page<Event> |
-| POST | /events | Event input; returns Event |
-| PATCH | /events/:id | Event input; returns Event |
-| DELETE | /events/:id | 204; enforce any result-dependency rules server-side |
-| GET | /results | Page<Result> |
-| POST | /results | Result input; returns Result |
-| PATCH | /results/:id | Result input; returns Result |
-| DELETE | /results/:id | 204 |
-| GET | /gallery | Page<GalleryImage> |
-| POST | /gallery | multipart image + metadata; returns GalleryImage |
-| PATCH | /gallery/:id | caption, category, eventId; returns GalleryImage |
-| DELETE | /gallery/:id | 204; remove record and storage according to backend policy |
-| GET | /scores/breakdown | { houseId, category, points }[] |
-| GET | /admin/stats | { totalPoints, events, images, results }; admin only |
-| GET | /settings | { schoolName, festivalName, description, startDate, endDate } |
-| PATCH | /settings | updated settings; returns settings; admin only |
+House input: name, six-digit hex color, nullable HTTPS logoUrl, enabled. House totals cannot be submitted. Events: name, art category, ISO date, description, status (upcoming/live/completed/cancelled), optional HTTPS imageUrl and venue. Results: eventId, houseId, positive integer position, finite nonnegative points (two decimal places, up to 1,000,000), optional competition category and ISO date. Missing category uses the event's category; missing result date uses server time.
 
-Page<T>: `{ items: T[], nextCursor: string | null, total: number }`.
-GET query keys:
-- Common: `limit`, `cursor`, `search`, `category`, `sort`.
-- Events: `status` = upcoming/live/completed; sort by date or name.
-- Results: `eventId`, `houseId`, `date` = YYYY-MM-DD; sort by -date, date, position or -points.
-- Gallery: sort by -createdAt (newest first).
-- Apply filters before counting, ordering and pagination. Use stable cursors with deterministic tie-breakers. The event options picker requests up to 200 events.
-- Requested result/event dates are ISO 8601 instants with timezone offsets. Define date-only filtering consistently in your festival timezone.
+Results are unique per event, house and competition category. The model supports one scored entry per house/category in an event; tied houses may share a position. Repeated entries require distinct competition categories or a future participant dimension. Invalid event/house references, disabled houses and cancelled events reject new/edited results. All constraints are rechecked by PostgreSQL.
 
-## Validated records
-The authoritative frontend schemas are in `services/models.ts`.
+Official totals are SUM(points) from results whose event is not cancelled. Cancelling an event temporarily excludes its scores; restoring it includes them again. Disabled houses retain their history and total but leave the public ranking. Competition ranks share numbers for ties (1,1,3); tied display order is deterministic by name then id. Scores are never stored as a separately mutable total.
 
-House: id, name, color (six-digit hex), logoUrl (HTTP(S) or null), points (finite number), enabled (boolean).
-Event: id, name, category, date, description, status; optional imageUrl, venue, resultCount.
-Result: id, eventId, eventName, category, houseId, position (positive integer), points, date; optional updatedAt. On write, eventName is resolved by the backend, not sent by the form.
-GalleryImage: id, url, caption, category, eventId (string or null), createdAt; optional thumbnailUrl, eventName, width, height.
-Settings startDate/endDate are nullable strings.
+Deleting an event cascades its results and clears its association from gallery metadata; images remain. Deleting a house with results is rejected. Transactions keep score-visible writes, revision changes and audit entries atomic.
 
-The frontend never recalculates house totals from results. The backend must atomically update totals/breakdowns and emit invalidations after adding, editing or deleting results. Tied houses display the same rank.
+## Pagination and filters
 
-## Gallery uploads
-POST /gallery uses FormData:
-- `image`: binary File
-- `metadata`: JSON string with caption, category, eventId (nullable)
+Page shape: `{items,nextCursor,total}`. A cursor is a validated opaque-to-the-UI offset string, not a snapshot token; concurrent inserts can shift page boundaries. Sorting always has an id tie-breaker. Default page size 20, maximum 200. Page and cursor both work.
 
-The frontend permits JPEG, PNG and WebP, 10 MB per image and 10 files per batch. It uploads each file with real XHR byte progress, preserves unsuccessful selections for retry, and only marks success after the backend confirms a valid GalleryImage response. Revalidate MIME signatures, dimensions, file sizes, metadata, authentication and access server-side. Store images in your existing/future image storage and return HTTP(S) URLs; provide thumbnails for efficient galleries.
+Common filters: search, category, date, dateFrom, dateTo, sort. Events add status; results add eventId and houseId; gallery adds eventId. Date-only filters use Asia/Kolkata. Supported sorts: name, date, -date, position, -points, createdAt, -createdAt as applicable. Search terms and every value are parameterized; identifiers and sort columns come only from server allowlists. Counts and page rows share one database statement.
 
-House logos and event artwork currently use backend-hosted URLs in their edit forms. The gallery uploader is the multi-image upload interface.
+The existing event selection controls request up to 200 events. For larger festivals, add a searchable event picker rather than loading the full programme into every form.
 
-## Real-time updates
-An optional authenticated EventSource listens for ordinary messages or named events:
-`houses`, `scores`, `results`, `events`, `gallery`, `settings`.
-Each event invalidates active resource caches; the frontend fetches the authoritative data. EventSource automatically reconnects; polling continues as a fallback. Do not put credentials into SSE query strings. Edits and deletions must emit invalidations too.
+## Gallery
 
-## Error and permission handling
-Reads have a 15-second timeout, retry controls, skeletons, waiting states and cached data. Invalid response shapes are rejected instead of being rendered as real records. Uploads time out after 60 seconds. Protected operations require the server to enforce the session and role.
+Multipart field `image` contains one image; `metadata` contains `{caption,category,eventId}`. The existing UI submits up to ten selected images individually, so each receives independent confirmation/progress and can be retried.
 
-## Acceptance checks when your backend is ready
-1. Configure the API and verify anonymous public reads and server-enforced administrator writes.
-2. Log in with a real authorised account; reload /admin; log out; verify expired sessions return to login.
-3. Add/edit/delete a result and verify atomic points, ranking, chart and breakdown updates.
-4. Upload multiple valid images; confirm thumbnails, captions and filters; retry a failed upload without duplicating completed files.
-5. Edit a house colour and verify public standings and result accents change.
-6. Test event status changes, dates, filtering, sorting and cursor pagination.
-7. Test SSE invalidation and reconnect; confirm polling continues when SSE is unavailable.
-8. Validate the real deployment's CORS, CSRF, cookies, rate limits, sanitisation and permissions.
+Limits: JPEG/PNG/WebP, 10 MB, 25 megapixels, no animation. The server checks decoder-reported format against MIME, decodes the entire image, re-encodes it as WebP, strips metadata, and creates a thumbnail (up to 640 pixels). The display image is at most 2560 pixels. UUID storage keys ignore the supplied filename. Four uploads per API instance may process concurrently.
+
+Storage objects use a public Supabase bucket; only the server key writes. Metadata contains actual cloud URLs and object keys, not binary data. Durable cleanup intents recover abandoned uploads and failed deletions. A background job retries unused objects after 15 minutes. Gallery deletion removes metadata immediately, deletes original/thumbnail objects, and queues a retry if storage fails. Multiple API instances can safely retry idempotent cleanup.
+
+## Authentication and authorization
+
+Supabase owns password hashing and verification. Public signup is not used. A provider-authenticated identity must also have an active admin_users profile. Admins manage houses/settings; admins and editors manage events/results/gallery and read statistics.
+
+Sessions use random 256-bit tokens in HttpOnly cookies; only SHA-256 token hashes are stored in PostgreSQL. The default maximum lifetime is eight hours. Login rotates the session, logout deletes it, password changes revoke all user sessions, and disabling a local profile blocks existing sessions immediately. Production cookies use Secure, SameSite and __Host- names. Supabase identity deletion triggers local session revocation while preserving image audit history.
+
+CSRF uses a signed random cookie plus header and explicit origin allowlisting. Login has IP and normalized-email rate limits shared through PostgreSQL. Reset responses do not reveal whether an email exists. Secrets are environment-only. Use production SMTP and Supabase password security settings when provisioning the real project.
+
+## Live updates and operations
+
+A revision row changes within the same transaction as houses/events/results/gallery/settings. API instances poll that row once per second while SSE clients exist, then notify connected clients to fetch authoritative API data. Revision locking avoids out-of-order sequence commits causing missed changes. A reconnect always triggers a refresh. The browser retains a 15-second polling fallback and retries a refresh if a change arrives during a fetch.
+
+Readiness checks query PostgreSQL. Database connections have limits and statement timeouts. TLS terminates at the production host; configure the exact proxy hop count and SSE buffering. Graceful shutdown closes streams, drains HTTP and releases database connections. The maintenance job expires sessions and rate counters and retries storage cleanup. Detailed failures remain in server logs; responses contain safe messages.
+
+## Verification boundary
+
+The automated suite runs real PostgreSQL semantics through PGlite, HTTP requests, transactions, image decoding and an independent SSE connection. Only Supabase password authentication and cloud object storage are substituted inside tests. The frontend schemas validate backend response shapes in those tests.
+
+Real Supabase Auth/Storage, recovery email delivery, TLS/proxy cookies, multi-process database contention and the production host still require staging verification after credentials are configured. No claim of a live production deployment is made.
 

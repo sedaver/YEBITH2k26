@@ -1,0 +1,10 @@
+node_modules
+.git
+.env
+.env.*
+.admin-input.json
+dist
+build-server
+.openai
+work
+.wrangler

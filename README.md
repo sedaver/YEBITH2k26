@@ -1,52 +1,40 @@
 # YEBETH2k26 · GHS BEENCHI
-Premium responsive school arts festival frontend. React 19, TypeScript, Vite, Radix/Shadcn primitives, and Lucide icons.
 
-## Start
-Requires Node.js 22.13 or newer.
-```sh
-npm ci
-npm run dev
-```
-Open the local address printed by the server (normally http://127.0.0.1:5173).
+The existing festival frontend is connected to a TypeScript/Express backend, PostgreSQL, Supabase Auth and Supabase Storage. The public design is preserved.
 
-```sh
-npm run typecheck
-npm run build
-npm run preview
-```
-The production website is generated in `dist/`. Any static host must route unknown page paths to `index.html`. The included `public/_redirects` supplies the common SPA fallback.
+## Activation status
 
-## Pages
-- / — festival home
-- /scores — standings, comparison chart and points breakdown
-- /events — searchable, filterable programme with event details
-- /results — filters, sorting and responsive results table
-- /gallery — paginated, category-filtered gallery with keyboard/swipe/fullscreen lightbox
-- /about — festival story
-- /admin/login — future backend sign-in
-- /admin — administration overview
-- /admin/houses, /admin/events, /admin/results, /admin/gallery, /admin/settings
+Backend code, migrations, frontend integration and local tests are included. Real Supabase credentials and a Node hosting target have not been supplied. Live administrator login, real cloud uploads and production deployment remain pending. The earlier private Sites URL still serves the previously published frontend.
 
-## Current connection state
-The backend does not yet exist, as confirmed in the brief discussion. This delivery contains **no database, fake login, sample house scores, seeded results or fabricated event photographs**.
-Public information has intentional waiting states. The admin workspace is clearly labelled **Interface preview** when `apiBaseUrl` is empty. You can explore forms, choose local image files and edit their upload metadata, but saving and uploading are disabled.
+Start with [SETUP.md](./SETUP.md). Put secrets in a local ignored `.env`, apply migrations, provision storage, and create your administrator account before running the application.
 
-Once `apiBaseUrl` is configured, preview access is automatically removed. The admin workspace checks the real session before loading protected resources. Permissions must also be enforced by the backend.
+## Commands
 
-## Connect the backend
-Read [BACKEND_INTEGRATION.md](./BACKEND_INTEGRATION.md). Configure `services/config.ts`, implement the documented contract, or adapt the services to your own API/SDK. All dynamic requests are in `services/`.
+- `npm ci` — install dependencies
+- `npm run db:migrate` — apply transactional PostgreSQL migrations
+- `npm run storage:provision` — create/update the Supabase gallery bucket
+- `npm run admin:create` — create a real Supabase user and authorized admin profile
+- `npm run dev` — local frontend and backend
+- `npm test` — HTTP/database/auth boundary/image/live notification integration tests
+- `npm run typecheck` — check frontend and backend TypeScript
+- `npm run build:full` — build both applications
+- `npm start` — run the built Node server (set NODE_ENV=production to serve dist)
+
+Node 22.13+ is required; verification used Node 24. No sample festival records enter the production flow. Optional development seeding requires explicit environment opt-in.
 
 ## Source map
-- `app/frontend.tsx`: app entry, route selection, metadata and lazy admin loading
-- `app/globals.css`: shared design tokens and responsive styles
-- `components/festival/`: reusable public components and data views
-- `admin/`: protected workspace, forms and image uploader
-- `services/`: validated data models, auth, HTTP, uploads, caching and updates
-- `components/ui/`: accessible shared interface primitives
 
-## Image
-The hero is original AI-generated illustrative artwork, not a photograph from GHS BEENCHI. It is identified as festival artwork and is never inserted into the event gallery. See [ASSETS.md](./ASSETS.md).
+- `app/`, `components/festival/`, `admin/` — existing website and administration interface
+- `services/` — frontend API contracts, sessions, uploads, cache and live updates
+- `server/app.ts` — HTTP endpoints and request middleware
+- `server/database/` — SQL schema, migrations, authoritative scores and repository
+- `server/auth/`, `server/middleware/` — Supabase password authentication, server-side sessions, authorization, CSRF and rate limits
+- `server/storage/` — verified image decoding, WebP optimization, thumbnails and cleanup
+- `server/realtime/` — shared database revision notifications over SSE
+- `server/tests/` — actual API/SQL tests with isolated external-provider adapters
+- `Dockerfile` — same-origin website/API container deployment
 
-## Verification and limits
-TypeScript and the production build have been checked. Desktop/mobile navigation, admin preview, dialogs, upload previews and the result-entry WebMCP tool have been reviewed. Live authentication, backend permissions, real-time messages, and successful persistence cannot be end-to-end tested until the backend exists.
+Admin links remain absent from public navigation. Administrators use `/admin/login`; forgotten passwords use `/admin/reset-password`. All admin writes require a server-validated session and role.
+
+Read [BACKEND_INTEGRATION.md](./BACKEND_INTEGRATION.md) for endpoint shapes, scoring rules, and operational behavior. The hero remains original AI-generated illustrative artwork; see [ASSETS.md](./ASSETS.md).
 
