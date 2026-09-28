@@ -140,7 +140,7 @@ test('program rankings and category standings derive from valid results with sha
 });
 test('event filtering, pagination, cancellation, cascade deletion and date validation',async()=>{
  const h=await house(),e=await event('Searchable Dance');await write('post','/api/results',{eventId:e.id,houseId:h.id,position:1,points:9}).expect(201);
- const found=await request(app).get('/api/events').query({search:'Searchable',category:'Dance',status:'upcoming',date:'2026-09-27',limit:1}).expect(200);pageSchema(EventSchema).parse(found.body.data);assert.equal(found.body.data.items[0].id,e.id);
+ const found=await request(app).get('/api/events').query({search:'Searchable',category:'Dance',status:'completed',date:'2026-09-27',limit:1}).expect(200);pageSchema(EventSchema).parse(found.body.data);assert.equal(found.body.data.items[0].id,e.id);
  const first=(await request(app).get('/api/events?limit=1')).body.data;assert.ok(first.nextCursor);const second=(await request(app).get('/api/events').query({limit:1,cursor:first.nextCursor})).body.data;assert.notEqual(first.items[0].id,second.items[0].id);
  await request(app).get('/api/events?date=2026-02-30').expect(400);await request(app).get('/api/results?limit=999999').expect(400);
  await write('patch','/api/events/'+e.id,{status:'cancelled'}).expect(200);assert.equal((await request(app).get('/api/houses/'+h.id)).body.data.points,0);
@@ -183,7 +183,7 @@ test('SSE notifies a separate connected visitor after database commit',async()=>
  const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.once('listening',r));const address=server.address() as {port:number};const controller=new AbortController();
  try{const response=await fetch(`http://127.0.0.1:${address.port}/api/live`,{signal:controller.signal});assert.match(response.headers.get('content-type')||'',/^text\/event-stream/);const reader=response.body!.getReader();await reader.read();await live.tick();await reader.read();
   const notification=async()=>{await live.tick();const message=await reader.read();assert.match(new TextDecoder().decode(message.value),/data:.*refresh/);};
-  const h=await house(),e=await event();const created=await write('post','/api/results',{eventId:e.id,houseId:h.id,position:1,points:10}).expect(201);await notification();assert.equal((await new Repository(db).one('houses',h.id)).points,10);
+  const h=await house(),e=await event();const created=await write('post','/api/results',{eventId:e.id,houseId:h.id,position:1,points:10}).expect(201);await notification();assert.equal((await new Repository(db).one('houses',h.id)).points,10);assert.equal((await new Repository(db).one('events',e.id)).status,'completed');
   await write('patch','/api/results/'+created.body.data.id,{points:15}).expect(200);await notification();assert.equal((await new Repository(db).one('houses',h.id)).points,15);
   await write('delete','/api/results/'+created.body.data.id).expect(200);await notification();assert.equal((await new Repository(db).one('houses',h.id)).points,0);
   const png=await sharp({create:{width:2,height:2,channels:3,background:'#ffffff'}}).png().toBuffer();await admin.post('/api/gallery').set('Origin',origin).set('X-CSRF-Token',csrf).field('metadata',JSON.stringify({caption:'Live moment',category:'Ceremony'})).attach('image',png,{filename:'live.png',contentType:'image/png'}).expect(201);await notification();

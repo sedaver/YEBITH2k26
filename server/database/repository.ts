@@ -111,6 +111,7 @@ export class Repository {
    if(!events.rows[0]||!houses.rows[0])throw new ApiError(400,'VALIDATION_ERROR','Choose an existing event and house.');
    if(events.rows[0].status==='cancelled'||!houses.rows[0].is_active)throw new ApiError(400,'VALIDATION_ERROR','Results require an active house and an event that is not cancelled.');
    if(!id){data.category??=events.rows[0].category;data.date??=new Date().toISOString();}
+   await db.query("UPDATE festival.events SET status='completed' WHERE id=$1",[merged.eventId]);
   }
   const columns:Record<Entity,Record<string,string>>={houses:{name:'name',color:'color',logoUrl:'logo_url',enabled:'is_active'},events:{name:'name',category:'category',programCategoryId:'program_category_id',description:'description',date:'event_date',status:'status',imageUrl:'image_url',venue:'venue'},results:{eventId:'event_id',houseId:'house_id',candidateName:'candidate_name',score:'score',category:'category',position:'position',points:'points',date:'result_date'},gallery:{caption:'caption',category:'category',eventId:'event_id'}};
   const keys=Object.keys(data).filter(k=>columns[kind][k]);if(!keys.length)throw new ApiError(400,'VALIDATION_ERROR','Provide at least one field to update.');
