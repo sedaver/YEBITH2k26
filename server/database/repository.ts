@@ -85,7 +85,7 @@ export class Repository {
   const values:any[]=[];const filters:string[]=[];const add=(sql:string,value:any)=>{values.push(value);filters.push(sql.replace('?',`$${values.length}`));};
   const dateCol=kind==='events'?'x.event_date':kind==='results'?'x.result_date':'x.uploaded_at';
   if(q.search){const pattern='%'+q.search.replace(/[\\%_]/g,'\\$&')+'%';add((kind==='events'?'x.name':kind==='results'?"(e.name || ' ' || x.category || ' ' || x.candidate_name || ' ' || (SELECT name FROM festival.houses WHERE id=x.house_id))":"(x.caption || ' ' || coalesce(e.name,''))")+' ILIKE ?',pattern);}
-  if(q.category)add('x.category=?',q.category);
+  if(q.category){const division=q.category.toUpperCase();if(kind==='results'&&['HS','LP','UP'].includes(division)){values.push(division);const placeholder=`$${values.length}`;filters.push(`(e.name ILIKE ('%- ' || ${placeholder}) OR e.description ILIKE ('%Division: ' || ${placeholder} || '%') OR e.description ILIKE ('%Divisions: ' || ${placeholder} || '%'))`);}else add('x.category=?',q.category);}
   if(q.programCategory&&kind!=='gallery')add('pc.name=?',(await this.categoryId(this.db,q.programCategory)).name);
   if(q.status&&kind==='events')add('x.status=?',q.status);
   if(q.eventId&&kind!=='events')add('x.event_id=?',q.eventId);
