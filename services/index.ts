@@ -1,5 +1,5 @@
 import {z} from 'zod';import {request,mutate,clearSession,ensureCsrf,urlFor,ApiError} from './client';import {isConnected} from './config';
-import {HouseSchema,ProgramCategorySchema,EventSchema,ResultSchema,GallerySchema,BreakdownSchema,RankingEntrySchema,ProgramRankingSchema,StatsSchema,SettingsSchema,SessionSchema,pageSchema,type Query} from './models';
+import {HouseSchema,ProgramCategorySchema,EventSchema,ResultSchema,GallerySchema,BreakdownSchema,RankingEntrySchema,ProgramRankingSchema,StatsSchema,SettingsSchema,SessionSchema,FinalScoreSchema,pageSchema,type Query} from './models';
 const crud=<S extends z.ZodTypeAny>(path:string,schema:S)=>({
  list:async(query:Query={},signal?:AbortSignal)=>pageSchema(schema).parse(await request(path,{signal},query)),
  create:async(data:unknown)=>schema.parse(await mutate(path,'POST',data)),
@@ -36,5 +36,11 @@ export const authService={
  logout:async()=>{await mutate('/auth/logout','POST');clearSession();},
 };
 export const settingsService={get:async()=>SettingsSchema.parse(await request('/settings')),save:async(data:unknown)=>SettingsSchema.parse(await mutate('/settings','PATCH',data))};
+export const finalScoreService={
+ get:async(signal?:AbortSignal)=>FinalScoreSchema.parse(await request('/final-score',{signal})),
+ admin:async(signal?:AbortSignal)=>FinalScoreSchema.parse(await request('/admin/final-score',{signal})),
+ publish:async()=>FinalScoreSchema.parse(await mutate('/admin/final-score/publish','POST',{})),
+ unpublish:async()=>FinalScoreSchema.parse(await mutate('/admin/final-score/unpublish','POST',{})),
+};
 export const adminService={stats:async()=>StatsSchema.parse(await request('/admin/stats'))};
 

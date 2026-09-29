@@ -85,7 +85,8 @@ export class Repository {
   const values:any[]=[];const filters:string[]=[];const add=(sql:string,value:any)=>{values.push(value);filters.push(sql.replace('?',`$${values.length}`));};
   const dateCol=kind==='events'?'x.event_date':kind==='results'?'x.result_date':'x.uploaded_at';
   if(q.search){const pattern='%'+q.search.replace(/[\\%_]/g,'\\$&')+'%';add((kind==='events'?'x.name':kind==='results'?"(e.name || ' ' || x.category || ' ' || x.candidate_name || ' ' || (SELECT name FROM festival.houses WHERE id=x.house_id))":"(x.caption || ' ' || coalesce(e.name,''))")+' ILIKE ?',pattern);}
-  if(q.category){const division=q.category.toUpperCase();if(kind==='results'&&['HS','LP','UP'].includes(division)){values.push(division);const placeholder=`$${values.length}`;filters.push(`(e.name ILIKE ('%- ' || ${placeholder}) OR e.description ILIKE ('%Division: ' || ${placeholder} || '%') OR e.description ILIKE ('%Divisions: ' || ${placeholder} || '%'))`);}else add('x.category=?',q.category);}
+  if(q.category)add('x.category=?',q.category);
+  if(q.division&&kind!=='gallery'){values.push(q.division);const placeholder=`$${values.length}`;const eventAlias=kind==='events'?'x':'e';filters.push(`(${eventAlias}.name ILIKE ('%- ' || ${placeholder}) OR ${eventAlias}.description ILIKE ('%Division: ' || ${placeholder} || '%') OR ${eventAlias}.description ILIKE ('%Divisions: ' || ${placeholder} || '%'))`);}
   if(q.programCategory&&kind!=='gallery')add('pc.name=?',(await this.categoryId(this.db,q.programCategory)).name);
   if(q.status&&kind==='events')add('x.status=?',q.status);
   if(q.eventId&&kind!=='events')add('x.event_id=?',q.eventId);
@@ -128,6 +129,22 @@ export class Repository {
 
  async audit(db:DB,actor:string,action:string,id:string){await db.query('INSERT INTO festival.audit_log(actor_id,action,entity_id) VALUES($1,$2,$3)',[actor,action,id]);}
  async settings(){return (await this.db.query(`SELECT school_name AS "schoolName",festival_name AS "festivalName",description,to_char(start_date,'YYYY-MM-DD') AS "startDate",to_char(end_date,'YYYY-MM-DD') AS "endDate" FROM festival.settings WHERE id=1`)).rows[0];}
+ async calculateFinalSnapshot(db:DB=this.db){
+  const [housesResult,divisionsResult]=await Promise.all([
+   db.query(`SELECT h.id AS "houseId",h.name AS "houseName",h.color,h.logo_url AS "logoUrl",coalesce(sum(CASE WHEN e.status<>'cancelled' THEN r.points ELSE 0 END),0)::float8 AS points FROM festival.houses h LEFT JOIN festival.results r ON r.house_id=h.id LEFT JOIN festival.events e ON e.id=r.event_id GROUP BY h.id ORDER BY lower(h.name),h.id`),
+   db.query(`SELECT d.division,h.id AS "houseId",h.name AS "houseName",h.color,h.logo_url AS "logoUrl",coalesce(sum(CASE WHEN e.status<>'cancelled' AND (upper(trim(e.name)) LIKE '% - ' || d.division OR upper(e.description) LIKE '%DIVISION: ' || d.division || '%' OR upper(e.description) LIKE '%DIVISIONS: ' || d.division || '%') THEN r.points ELSE 0 END),0)::float8 AS points FROM (VALUES ('HS'),('LP'),('UP')) d(division) CROSS JOIN festival.houses h LEFT JOIN festival.results r ON r.house_id=h.id LEFT JOIN festival.events e ON e.id=r.event_id GROUP BY d.division,h.id ORDER BY d.division,lower(h.name),h.id`)
+  ]);
+  const rankEntries=(rows:any[])=>{const entries=rows.map(row=>{const {division:_division,...entry}=row;return {...entry,points:Number(entry.points)}}).sort((a,b)=>b.points-a.points||a.houseName.localeCompare(b.houseName)||a.houseId.localeCompare(b.houseId));let previous:number|undefined;let rank=0;return entries.map((entry,index)=>{if(previous!==entry.points)rank=index+1;previous=entry.points;return {...entry,rank};});};
+  return {houses:rankEntries(housesResult.rows),divisions:['HS','LP','UP'].map(division=>({division,entries:rankEntries(divisionsResult.rows.filter(row=>row.division===division))}))};
+ }
+ async finalScores(){
+  const settings=(await this.db.query(`SELECT final_published AS "published",final_published_at AS "publishedAt",final_snapshot AS "snapshot" FROM festival.settings WHERE id=1`)).rows[0]||{};
+  const current=await this.calculateFinalSnapshot();const snapshot=settings.snapshot;
+  const payload=settings.published&&snapshot&&Array.isArray(snapshot.houses)&&Array.isArray(snapshot.divisions)?snapshot:current;
+  return {published:Boolean(settings.published),publishedAt:settings.publishedAt?new Date(settings.publishedAt).toISOString():null,...payload};
+ }
+ async publishFinalScores(actor:string){return this.db.transaction(async db=>{const snapshot=await this.calculateFinalSnapshot(db);const publishedAt=new Date().toISOString();await db.query(`UPDATE festival.settings SET final_published=true,final_published_at=$1,final_snapshot=$2 WHERE id=1`,[publishedAt,JSON.stringify(snapshot)]);await this.audit(db,actor,'final-scores.publish','1');return {published:true,publishedAt,...snapshot};});}
+ async unpublishFinalScores(actor:string){return this.db.transaction(async db=>{await db.query(`UPDATE festival.settings SET final_published=false,final_published_at=NULL,final_snapshot=NULL WHERE id=1`);await this.audit(db,actor,'final-scores.unpublish','1');return this.finalScores();});}
  async saveSettings(data:Record<string,any>,actor:string){await this.db.transaction(async db=>{await db.query(`UPDATE festival.settings SET school_name=$1,festival_name=$2,description=$3,start_date=$4,end_date=$5 WHERE id=1`,[data.schoolName,data.festivalName,data.description,data.startDate,data.endDate]);await this.audit(db,actor,'settings.update','1');});return this.settings();}
  async stats(){
   const {rows}=await this.db.query(`SELECT (SELECT count(*)::int FROM festival.houses) AS "totalHouses",(SELECT count(*)::int FROM festival.events) AS events,(SELECT count(*)::int FROM festival.results) AS results,(SELECT count(*)::int FROM festival.gallery) AS images,(SELECT coalesce(max(points),0)::float8 FROM festival.house_scores) AS "totalPoints"`);

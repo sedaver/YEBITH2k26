@@ -51,6 +51,10 @@ export function createApp(deps:{db:DB;config:Config;auth:AuthProvider;store:Obje
  api.get('/scores/breakdown',async(_req,res)=>ok(res,await repo.breakdown()));
  api.get('/scores/category-standings',async(req,res)=>{const q=queryInput.pick({programCategory:true}).parse(req.query);ok(res,await repo.categoryStandings(q.programCategory));});
  api.get('/scores/program-rankings',async(req,res)=>{const q=queryInput.pick({programCategory:true,eventId:true}).parse(req.query);ok(res,await repo.programRankings(q));});
+ api.get('/final-score',async(_req,res)=>ok(res,await repo.finalScores()));
+ api.get('/admin/final-score',sec.requireAdmin,async(_req,res)=>ok(res,await repo.finalScores()));
+ api.post('/admin/final-score/publish',sec.requireAdmin,sec.adminOnly,async(req,res)=>ok(res,await repo.publishFinalScores(req.admin!.id)));
+ api.post('/admin/final-score/unpublish',sec.requireAdmin,sec.adminOnly,async(req,res)=>ok(res,await repo.unpublishFinalScores(req.admin!.id)));
  api.get('/settings',async(_req,res)=>ok(res,await repo.settings()));
  api.patch('/settings',sec.requireAdmin,sec.adminOnly,async(req,res)=>ok(res,await repo.saveSettings(settingsInput.parse(req.body),req.admin!.id)));
  api.get('/admin/stats',sec.requireAdmin,async(_req,res)=>{res.set('Cache-Control','no-store');ok(res,await repo.stats());});

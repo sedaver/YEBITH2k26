@@ -50,6 +50,7 @@ CREATE TABLE festival.storage_cleanup (object_key text PRIMARY KEY, created_at t
 CREATE TABLE festival.settings (
  id integer PRIMARY KEY CHECK(id=1), school_name text NOT NULL, festival_name text NOT NULL,
  description text NOT NULL, start_date date, end_date date,
+ final_published boolean NOT NULL DEFAULT false, final_published_at timestamptz, final_snapshot jsonb,
  CHECK(end_date IS NULL OR start_date IS NULL OR end_date >= start_date)
 );
 INSERT INTO festival.settings VALUES(1,'GHS BEENCHI','YEBETH2k26','Where creativity meets competition.',NULL,NULL);
